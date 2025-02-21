@@ -1,0 +1,104 @@
+---
+- name: Install LAMP on WEB and DB servers
+  hosts: web, db
+  become: true
+  vars_files:
+    - /home/ansible/playbooks/secrets.yml  # Make sure the path is correct
+  tasks:
+    - name: Update and upgrade system packages
+      apt:
+        update_cache: yes
+        upgrade: dist
+
+# WEB server
+- name: Install stuff on WEB
+  hosts: web
+  become: true
+  vars_files:
+    - /home/ansible/playbooks/secrets.yml  
+  tasks:
+
+    - name: Installing apache and ufw
+      apt:
+        name:
+          - apache2
+          - ufw
+        state: present
+
+    - name: Installing SQL for replication
+      apt:
+        name:
+          - mariadb-server
+          - mariadb-client
+          - python3-pymysql
+        state: present
+
+    - name: Installing PHP
+      apt:
+        name:
+          - php
+          - php-fpm
+          - php-mysql
+          - php-cli
+          - php-curl
+          - php-xml
+          - php-mbstring
+        state: present
+
+    - name: Start Apache server
+      systemd:
+        name: apache2
+        enabled: yes
+        state: started
+
+# DB server
+- name: Installing stuff on DB server
+  hosts: db
+  become: true
+  vars_files:
+    - /home/ansible/playbooks/secrets.yml  
+  tasks:
+
+    - name: Installing packages
+      apt:
+        name: libmariadb-dev-compat
+        state: present
+
+    - name: Installing MariaDB
+      apt:
+        name: mariadb-server
+        state: present
+    
+    - name: Installing UFW
+      apt:
+        name: ufw
+        state: present
+     
+    - name: Installing SQL Python Library
+      apt:
+        name: python3-pymysql
+        state: present
+
+    - name: Configure MariaDB to bind to private IP
+      lineinfile:
+        path: /etc/mysql/mariadb.conf.d/50-server.cnf
+        regexp: '^bind-address'
+        line: 'bind-address = 192.168.100.20'  # Use the private IP of your DB server
+        state: present
+
+    - name: Setting up root password for MariaDB
+      mysql_user:
+        name: root
+        host: '192.168.100.20'  
+        password: "{{ sql_root_password }}"
+        state: present
+        login_user: root  # Specify root user for login
+        login_password: "{{ sql_root_password }}"  # Use the root password to login
+        login_host: 192.168.100.20
+
+
+    - name: Starting MariaDB
+      systemd:
+        name: mariadb
+        enabled: yes
+        state: started
