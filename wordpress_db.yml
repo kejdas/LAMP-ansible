@@ -1,0 +1,37 @@
+---
+- name: Configure Database for WordPress
+  hosts: db
+  become: true
+  vars_files:
+    - /home/ansible/playbooks/secrets.yml  # Make sure the path is correct
+  tasks:
+  
+    # Create WordPress database
+    - name: Create WordPress database
+      mysql_db:
+        name: wordpress
+        state: present
+        login_user: root
+        login_password: "{{ sql_root_password }}"
+        login_host: 192.168.100.20
+
+    # Create WordPress user and grant privileges
+    - name: Create WordPress user
+      mysql_user:
+        name: wordpress_user
+        password: "{{ wordpress_password }}"
+        priv: "wordpress.*:ALL"
+        state: present
+        host: '192.168.100.10'
+        login_user: root
+        login_password: "{{ sql_root_password }}"
+        login_host: 192.168.100.20
+
+    # Ensure privileges are flushed
+    - name: Flush privileges
+      community.mysql.mysql_query:
+        query: "FLUSH PRIVILEGES;"
+        login_user: root
+        login_password: "{{ sql_root_password }}"
+        login_host: 192.168.100.20
+
