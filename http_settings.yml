@@ -1,0 +1,4 @@
+http_host: "" # ip of your web server
+http_conf: ".conf" # ip of your web server
+http_port: "80"
+ip: "176.119.33.31" # ip of your web server
