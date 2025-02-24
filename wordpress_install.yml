@@ -1,0 +1,137 @@
+---
+- name: Install WordPress on Web Server
+  hosts: web
+  become: true
+  vars_files:
+    - /home/ansible/playbooks/secrets.yml
+    - /home/ansible/playbooks/vars/wp_vars.yml
+    - /home/ansible/playbooks/vars/http_settings.yml  # Make sure the path is correct
+  tasks:
+
+  # Apache Configuration
+    - name: Create document root
+      file:
+        path: "/var/www/{{ http_host }}"
+        state: directory
+        owner: "www-data"
+        group: "www-data"
+        mode: '0755'
+
+    - name: Set up Apache VirtualHost
+      template:
+        src: "/home/ansible/files/apache.conf"
+        dest: "/etc/apache2/sites-available/{{ http_conf }}"
+
+    - name: Ensure ServerName is set in apache2.conf
+      lineinfile:
+        path: /etc/apache2/apache2.conf
+        regexp: '^#?ServerName'
+        line: 'ServerName {{ ip }}'
+        insertafter: EOF
+
+    - name: Enable rewrite module
+      shell: /usr/sbin/a2enmod rewrite
+
+    - name: Enable new site
+      shell: /usr/sbin/a2ensite {{ http_conf }}
+
+    - name: Disable default Apache site
+      shell: /usr/sbin/a2dissite 000-default.conf
+
+    - name: Download WordPress
+      get_url:
+        url: https://wordpress.org/latest.tar.gz
+        dest: /tmp/wordpress.tar.gz
+
+    - name: Extract WordPress
+      unarchive:
+        src: /tmp/wordpress.tar.gz
+        dest: /var/www/{{ http_host }}
+        remote_src: yes
+
+      # UFW Configuration
+    - name: "UFW - Allow HTTP on port {{ http_port }}"
+      ufw:
+        rule: allow
+        port: "{{ http_port }}"
+        proto: tcp
+ 
+    - name: Set ownership
+      file:
+        path: "/var/www/{{ http_host }}"
+        state: directory
+        recurse: yes
+        owner: www-data
+        group: www-data
+
+    - name: Set permissions for directories
+      shell: "/usr/bin/find /var/www/{{ http_host }}/wordpress/ -type d -exec chmod 750 {} \\;"
+
+    - name: Set permissions for files
+      shell: "/usr/bin/find /var/www/{{ http_host }}/wordpress/ -type f -exec chmod 640 {} \\;"
+
+
+    - name: Copy wp-config-sample.php to wp-config.php
+      command:
+        cmd: cp /var/www/{{ http_host }}/wordpress/wp-config-sample.php /var/www/{{ http_host }}/wordpress/wp-config.php
+
+    - name: Set up wp-config
+      template:
+        src: "/home/ansible/files/wp-config.php"
+        dest: "/var/www/{{ http_host }}/wordpress/wp-config.php"
+
+#    - name: Set up .htaccess
+#      template:
+#        src: "/home/ansible/files/.htaccess"
+#        dest: "/var/www/{{ http_host }}/wordpress/.htaccess"
+     
+    - name: Download wp-cli
+      get_url:
+        url: https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar
+        dest: /usr/local/bin/wp
+        mode: '0755'
+
+    - name: Configure WordPress
+      command: >
+        wp core install
+        --url={{ wp_site_url }}
+        --title={{ wp_site_title }}
+        --admin_user={{ wp_admin_user }}
+        --admin_password={{ wp_admin_password }}
+        --admin_email={{ wp_admin_email }}
+        --path={{ wordpress_path }}
+      environment:
+        WP_CLI_ALLOW_ROOT: "1"
+
+    - name: Update siteurl to correct IP
+      command: >
+        wp option update siteurl "http://{{ ip }}"
+      environment:
+        WP_CLI_ALLOW_ROOT: "1"
+      args:
+        chdir: "{{ wordpress_path }}"
+
+    - name: Update home to correct IP
+      command: >
+        wp option update home "http://{{ ip }}"
+      environment:
+        WP_CLI_ALLOW_ROOT: "1"
+      args:
+        chdir: "{{ wordpress_path }}"
+    
+    - name: Install All-in-One WP Migration plugin
+      command: wp plugin install all-in-one-wp-migration --activate --path={{ wordpress_path }}
+      environment:
+        WP_CLI_ALLOW_ROOT: "1"
+
+    - name: Export WordPress site using All-in-One WP Migration
+      command: wp ai1wm export --path={{ wordpress_path }} --filename={{ export_file_name }}
+      environment:
+        WP_CLI_ALLOW_ROOT: "1"
+      when: export_file_name is defined
+    
+    - name: Restart Apache
+      systemd:
+        name: apache2
+        state: restarted
+
