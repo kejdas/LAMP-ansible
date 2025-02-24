@@ -1,0 +1,4 @@
+ordpress_path: "/var/www/{{ http_host }}/wordpress"
+wp_site_title: ""
+export_file_name: "" #if exist
+wp_site_url: "{{ ip }}" 
