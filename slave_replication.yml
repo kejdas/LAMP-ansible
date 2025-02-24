@@ -1,0 +1,41 @@
+# WEB server
+- name: SLAVE WEB
+  hosts: web
+  become: true
+  vars_files:
+    - /home/ansible/playbooks/secrets.yml  
+  tasks:
+ 
+    - name: Configuring MariaDB on WEB server
+      lineinfile:
+        path: /etc/mysql/mariadb.conf.d/50-server.cnf
+        regexp: '^{{ item.key }}'
+        line: "{{ item.key }} = {{ item.value }}"
+        create: yes
+      loop:
+        - { key: "server-id", value: "2" }  # Unique ID for the slave
+        - { key: "relay-log", value: "mysql-relay-bin" }  # Enable relay log
+        - { key: "log-bin", value: "mysql-bin" }  # Enable binary logging on slave
+
+    - name: Restart MariaDB for replication configuration
+      systemd:
+        name: mariadb
+        state: restarted
+    
+    - name: Read master statu form file
+      slurp:
+        src: /home/ansible/master_status.yml
+      register: master_status_file
+
+    - name: Parse master status
+      set_fact:
+        master_status: "{{ master_status_file['content'] | b64decode | from_yaml }}"
+
+    - name: Start slave replication
+      mysql_replication:
+        mode: changeprimary 
+        master_host: "192.168.100.20"  # DB server (master) IP address
+        master_user: "repl_user"
+        master_password: "{{ repl_password }}"
+        master_log_file: "{{ master_status.master_log_file }}"
+        master_log_pos: "{{ master_status.master_log_pos }}"
