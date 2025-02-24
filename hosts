@@ -1,0 +1,12 @@
+# Web Servers
+[web]
+{{IP OF YOUR SERVER}} ansible_ssh_user=ansible ansible_ssh_private_key_file=/home/ansible/.ssh/id_rsa
+
+# Database Servers
+[db]
+{{IP OF YOUR SERVER}} ansible_ssh_user=ansible ansible_ssh_private_key_file=/home/ansible/.ssh/id_rsa
+
+# All servers
+[ansible:children]
+web
+db
