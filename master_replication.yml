@@ -1,0 +1,53 @@
+---
+- name: Master Replication DB server
+  hosts: db
+  become: true
+  vars_files:
+    - /home/ansible/playbooks/secrets.yml
+  tasks:
+    - name: Starting MariaDB
+      systemd:
+        name: mariadb
+        enabled: yes
+        state: started
+
+    - name: Configuring MariaDB for replication
+      lineinfile:
+        path: /etc/mysql/mariadb.conf.d/50-server.cnf
+        regexp: '^{{ item.key }}'
+        line: "{{ item.key }} = {{ item.value }}"
+        create: yes
+      loop:
+        - { key: "server-id", value: "1" }  # Unique ID for the master
+        - { key: "log-bin", value: "mysql-bin" }  # Enable binary logging
+        - { key: "binlog-do-db", value: "wordpress" }  # Specify the database to replicate
+
+    - name: Restart MariaDB for replication configuration
+      systemd:
+        name: mariadb
+        state: restarted
+
+    - name: Create replication user
+      mysql_user:
+        name: "repl_user"
+        password: "{{ repl_password }}" #add into secrets
+        host: '192.168.100.20'
+        priv: '*.*:REPLICATION SLAVE'
+        state: present
+        login_user: root
+        login_password: "{{ sql_root_password }}"
+
+    - name: Get current binlog position
+      mysql_query:
+        query: "SHOW MASTER STATUS;"
+        login_user: root
+        login_password: "{{ sql_root_password }}" 
+      register: master_status
+
+    - name: Save master status for slave
+      copy:
+        content: |    
+          master_log_file: "{{ master_status.query_result[0][0].File }}"
+          master_log_pos: "{{ master_status.query_result[0][0].Position }}"
+        dest: /home/ansible/master_status.yml
+      delegate_to: # your WEB server ip
